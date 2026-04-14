@@ -734,9 +734,9 @@ def inject_css():
     .main button,
     [data-testid="stMain"] button,
     [data-testid="stMain"] .stButton button {
-        background-color: #1e3a8a !important;
-        color: #ffffff !important;
-        border: none !important;
+        background-color: rgba(201,162,39,0.15) !important;
+        color: #c9a227 !important;
+        border: 1px solid #c9a227 !important;
         border-radius: 8px !important;
         font-weight: 700 !important;
     }
@@ -750,9 +750,9 @@ def inject_css():
     .stDownloadButton button,
     [data-testid="stDownloadButton"] button,
     .main .stDownloadButton button {
-        background-color: #1e3a8a !important;
-        color: #ffffff !important;
-        border: none !important;
+        background-color: rgba(201,162,39,0.15) !important;
+        color: #c9a227 !important;
+        border: 1px solid #c9a227 !important;
         border-radius: 8px !important;
         font-weight: 700 !important;
     }
@@ -1329,7 +1329,7 @@ def modulo_processos(modo: str):
         if st.button("➕ Cadastrar Novo Processo", type="primary", key=f"btn_novo_{modo}"):
             st.session_state[form_key] = {
                 "id": None, "data_entrada": hoje_iso(), "numero_pasta": "",
-                "nome_assistido": "", "descricao": "", "assessor": "",
+                "nome_assistido": "", "descricao": "", "telefone":"", "assessor": "",
                 "prioridade": "Média", "status": "Em Andamento",
             }
 
