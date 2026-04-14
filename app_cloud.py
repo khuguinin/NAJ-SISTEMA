@@ -817,15 +817,39 @@ def tela_login():
         border-color: #c9a227 !important;
         box-shadow: 0 0 0 2px rgba(201,162,39,0.3) !important;
     }}
-    /* Labels dos inputs */
+    /* Labels dos inputs — brancos e visíveis */
+    .block-container label,
+    .block-container [data-testid="stWidgetLabel"] p,
     .block-container [data-testid="stTextInput"] label {{
-        color: rgba(255,255,255,0.8) !important;
-        font-size: 13px !important;
-        font-weight: 500 !important;
+        color: rgba(255,255,255,0.95) !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
     }}
-    /* Botão entrar */
-    .block-container .stButton > button {{
+    /* Inputs brancos e bem visíveis */
+    .block-container input,
+    .block-container .stTextInput input,
+    .block-container [data-baseweb="input"] input {{
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 2px solid rgba(255,255,255,0.4) !important;
+        border-radius: 8px !important;
+        font-size: 15px !important;
+        padding: 10px 14px !important;
+    }}
+    .block-container input:focus,
+    .block-container .stTextInput input:focus {{
+        border-color: #c9a227 !important;
+        box-shadow: 0 0 0 3px rgba(201,162,39,0.35) !important;
+    }}
+    .block-container input::placeholder {{ color: #94a3b8 !important; }}
+    /* Botão entrar — dourado e bem visível */
+    .block-container .stButton > button,
+    .block-container button[data-testid="baseButton-primary"],
+    .block-container [data-testid="stBaseButton-primary"] {{
         background: #c9a227 !important;
+        background-color: #c9a227 !important;
         color: #0a1744 !important;
         border: none !important;
         border-radius: 8px !important;
@@ -837,15 +861,15 @@ def tela_login():
     }}
     .block-container .stButton > button:hover {{
         background: #e4b82d !important;
+        background-color: #e4b82d !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 4px 16px rgba(201,162,39,0.4) !important;
     }}
-    /* Esconde o ícone de olho do password em dark mode */
-    .block-container [data-testid="stTextInput"] svg {{ fill: rgba(255,255,255,0.5) !important; }}
+    /* Ícone de olho do password */
+    .block-container [data-testid="stTextInput"] svg {{ fill: rgba(100,116,139,0.8) !important; }}
     /* Mensagem de erro */
     .block-container [data-testid="stAlert"] {{
-        background: rgba(185,28,28,0.2) !important;
-        border: 1px solid rgba(185,28,28,0.5) !important;
+        background: rgba(185,28,28,0.25) !important;
+        border: 1px solid rgba(248,113,113,0.5) !important;
         border-radius: 8px !important;
     }}
     .block-container [data-testid="stAlert"] p {{ color: #fca5a5 !important; }}
@@ -861,13 +885,15 @@ def tela_login():
         </div>
     </div>
 
-    <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);
-                border-radius:14px;padding:28px 28px 20px;margin-top:20px;
-                backdrop-filter:blur(10px);">
-        <div style="font-size:18px;font-weight:700;color:white;margin-bottom:20px;
+    <div style="background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
+                border-radius:14px;padding:28px 28px 8px;margin-top:20px;">
+        <div style="font-size:18px;font-weight:700;color:white;margin-bottom:4px;
                     display:flex;align-items:center;gap:8px;">
             🔐 Acesso ao Sistema
         </div>
+        <p style="color:rgba(255,255,255,0.7);font-size:13px;margin-bottom:16px;">
+            Digite seu usuário e senha para entrar
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
