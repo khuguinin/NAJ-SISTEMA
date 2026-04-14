@@ -136,7 +136,7 @@ def init_db():
             END IF;
         END $$
         """,
-        # === MIGRAÇÃO PARA O CAMPO TELEFONE (apenas esta linha foi adicionada) ===
+        # === MIGRAÇÃO PARA O CAMPO TELEFONE ===
         """
         DO $$ BEGIN
             IF NOT EXISTS (
@@ -144,6 +144,18 @@ def init_db():
                 WHERE table_name='processos' AND column_name='telefone'
             ) THEN
                 ALTER TABLE processos ADD COLUMN telefone TEXT DEFAULT '';
+            END IF;
+        END $$
+        """,
+        # === MIGRAÇÃO PARA O CAMPO data_aguardando ===
+        # Registra exatamente quando o processo foi movido para "Aguardando Documentos"
+        """
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='processos' AND column_name='data_aguardando'
+            ) THEN
+                ALTER TABLE processos ADD COLUMN data_aguardando TEXT DEFAULT '';
             END IF;
         END $$
         """,
@@ -194,10 +206,18 @@ def atualizar_processo(pid, data_entrada, pasta, nome, telefone, descricao, asse
         (data_entrada, pasta, nome, telefone, descricao, assessor, prioridade, status, usuario, agora_str(), pid)
     )
 def alterar_status_processo(pid, status, usuario):
-    _exec(
-        "UPDATE processos SET status=%s,editado_por=%s,editado_em=%s WHERE id=%s",
-        (status, usuario, agora_str(), pid)
-    )
+    if status == "Aguardando Documentos":
+        # Grava a data/hora em que entrou neste status para controlar o prazo de 15 dias
+        _exec(
+            "UPDATE processos SET status=%s,editado_por=%s,editado_em=%s,data_aguardando=%s WHERE id=%s",
+            (status, usuario, agora_str(), hoje_iso(), pid)
+        )
+    else:
+        # Ao sair de Aguardando, limpa a data para não gerar notificação futura
+        _exec(
+            "UPDATE processos SET status=%s,editado_por=%s,editado_em=%s,data_aguardando='' WHERE id=%s",
+            (status, usuario, agora_str(), pid)
+        )
 def deletar_processo(pid):
     _exec("DELETE FROM processos WHERE id=%s", (pid,))
 # ── CRUD Demandas ──────────────────────────────────────────────────────────────
@@ -329,19 +349,37 @@ def gerar_pdf(titulo: str, dados: list, tipo: str, assessor_filtro: str = "") ->
             story.append(Spacer(1, 3))
     else:
         if "processos" in tipo:
-            headers = ["#ID","Entrada","Pasta","Assistido","Descrição","Assessor","Prioridade","Status"]
-            col_w = [14*mm, 22*mm, 22*mm, 50*mm, 65*mm, 35*mm, 20*mm, 30*mm]
-            def row_fn(r):
-                return [
-                    p(f"#{r['id']}", bold=True),
-                    p(fmt_data(r.get("data_entrada",""))),
-                    p(r.get("numero_pasta","") or "—"),
-                    p(r.get("nome_assistido","—")),
-                    p((r.get("descricao","") or "—")[:55]),
-                    p((r.get("assessor","") or "—").split()[0]),
-                    p(r.get("prioridade","—")),
-                    p(r.get("status","—")),
-                ]
+            if tipo == "processos_aguardando":
+                # Relatório de aguardando: inclui Telefone para facilitar cobrança
+                headers = ["#ID","Entrada","Pasta","Assistido","Telefone","Assessor","Prioridade","Dias Ag."]
+                col_w = [14*mm, 22*mm, 22*mm, 48*mm, 32*mm, 35*mm, 20*mm, 20*mm]
+                def row_fn(r):
+                    data_ag = r.get("data_aguardando","") or r.get("data_entrada","")
+                    dias_ag = dias_aberto(data_ag)
+                    return [
+                        p(f"#{r['id']}", bold=True),
+                        p(fmt_data(r.get("data_entrada",""))),
+                        p(r.get("numero_pasta","") or "—"),
+                        p(r.get("nome_assistido","—")),
+                        p(r.get("telefone","") or "—"),
+                        p((r.get("assessor","") or "—").split()[0]),
+                        p(r.get("prioridade","—")),
+                        p(f"{dias_ag}d"),
+                    ]
+            else:
+                headers = ["#ID","Entrada","Pasta","Assistido","Descrição","Assessor","Prioridade","Status"]
+                col_w = [14*mm, 22*mm, 22*mm, 50*mm, 65*mm, 35*mm, 20*mm, 30*mm]
+                def row_fn(r):
+                    return [
+                        p(f"#{r['id']}", bold=True),
+                        p(fmt_data(r.get("data_entrada",""))),
+                        p(r.get("numero_pasta","") or "—"),
+                        p(r.get("nome_assistido","—")),
+                        p((r.get("descricao","") or "—")[:55]),
+                        p((r.get("assessor","") or "—").split()[0]),
+                        p(r.get("prioridade","—")),
+                        p(r.get("status","—")),
+                    ]
         else:
             headers = ["#ID","Data","Pasta","Assistido","Demanda","Assessor","Status"]
             col_w = [14*mm, 22*mm, 22*mm, 55*mm, 90*mm, 40*mm, 26*mm]
@@ -681,6 +719,30 @@ def inject_css():
 # ══════════════════════════════════════════════════════════════════════════════
 # NOTIFICAÇÕES — Atendimentos sem resolução após 24h
 # ════════════════════════════════════════════════════════════════
+def verificar_processos_aguardando() -> list[dict]:
+    """Retorna processos em Aguardando Documentos há mais de 15 dias."""
+    procs = listar_processos("Aguardando Documentos")
+    alertas = []
+    for p in procs:
+        data_ag = p.get("data_aguardando","")
+        if data_ag:
+            dias = dias_aberto(data_ag)
+        else:
+            # Fallback: usa editado_em se data_aguardando não foi registrada ainda
+            try:
+                editado = p.get("editado_em","")
+                if editado:
+                    dt = datetime.datetime.strptime(editado, "%d/%m/%Y %H:%M")
+                    dias = (datetime.datetime.now() - dt).days
+                else:
+                    dias = dias_aberto(p.get("data_entrada",""))
+            except Exception:
+                dias = 0
+        if dias >= 15:
+            p["_dias_aguardando"] = dias
+            alertas.append(p)
+    return alertas
+
 def verificar_notificacoes() -> list[dict]:
     """Retorna atendimentos com resolução vazia criados há mais de 24h."""
     todos = listar_atendimentos()
@@ -701,23 +763,36 @@ def verificar_notificacoes() -> list[dict]:
             pass
     return pendentes
 def exibir_notificacoes():
-    """Exibe banner de notificação se houver atendimentos pendentes."""
+    """Exibe banners de notificação: atendimentos sem resolução e processos aguardando > 15 dias."""
     perfil = st.session_state.get("perfil","")
     if perfil != "assessor":
         return
+    # Notificação 1 — atendimentos sem resolução após 24h
     pendentes = verificar_notificacoes()
-    if not pendentes:
-        return
-    nomes = ", ".join(
-        f"#{a['id']} {a.get('nome_pessoa','?').split()[0]}"
-        for a in pendentes[:5]
-    )
-    extra = f" e mais {len(pendentes)-5}" if len(pendentes) > 5 else ""
-    st.warning(
-        f"🔔 **{len(pendentes)} atendimento(s) sem resolução há mais de 24h:** "
-        f"{nomes}{extra}. Acesse o módulo de Atendimentos e registre a solução.",
-        icon="⚠️"
-    )
+    if pendentes:
+        nomes = ", ".join(
+            f"#{a['id']} {a.get('nome_pessoa','?').split()[0]}"
+            for a in pendentes[:5]
+        )
+        extra = f" e mais {len(pendentes)-5}" if len(pendentes) > 5 else ""
+        st.warning(
+            f"🔔 **{len(pendentes)} atendimento(s) sem resolução há mais de 24h:** "
+            f"{nomes}{extra}. Registre a solução no módulo de Atendimentos.",
+            icon="⚠️"
+        )
+    # Notificação 2 — processos aguardando documentos há mais de 15 dias
+    aguardando = verificar_processos_aguardando()
+    if aguardando:
+        nomes_ag = ", ".join(
+            f"#{p['id']} {p['nome_assistido'].split()[0]} ({p['_dias_aguardando']}d)"
+            for p in aguardando[:5]
+        )
+        extra_ag = f" e mais {len(aguardando)-5}" if len(aguardando) > 5 else ""
+        st.error(
+            f"📂 **{len(aguardando)} processo(s) aguardando documentos há mais de 15 dias:** "
+            f"{nomes_ag}{extra_ag}. Verifique e cobre os documentos pendentes.",
+            icon="🚨"
+        )
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS VISUAIS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1058,7 +1133,20 @@ def card_processo(p: dict, form_key: str, acoes_status: bool = False):
             unsafe_allow_html=True
         )
     with c_dias:
-        st.markdown(dias_html(dias), unsafe_allow_html=True)
+        status_proc = p.get("status","")
+        if status_proc == "Em Andamento":
+            # Apenas processos Em Andamento têm cobrança de prazo
+            st.markdown(dias_html(dias), unsafe_allow_html=True)
+        elif status_proc == "Aguardando Documentos":
+            # Mostra dias aguardando sem cobrança de prazo (indicador neutro)
+            data_ag = p.get("data_aguardando","") or p.get("data_entrada","")
+            dias_ag = dias_aberto(data_ag)
+            if dias_ag >= 15:
+                st.markdown(f'<span class="da">📂 {dias_ag}d ag.</span>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<span class="dok">📂 {dias_ag}d ag.</span>', unsafe_allow_html=True)
+        else:
+            st.markdown("", unsafe_allow_html=True)
     with c_acoes:
         _perfil = st.session_state.get("perfil","assessor")
         b1, b2, b3, b4 = st.columns(4)
@@ -1138,6 +1226,16 @@ def modulo_dashboard():
     if criticos:
         st.error(f"⚠️ **{len(criticos)} processo(s) com mais de 30 dias em aberto** — atenção imediata: "
                  + ", ".join(f"#{p['id']} {p['nome_assistido'].split()[0]}" for p in criticos[:6]))
+    # Alerta de processos aguardando documentos há mais de 15 dias
+    aguardando_alerta = verificar_processos_aguardando()
+    if aguardando_alerta:
+        nomes_ag = ", ".join(
+            f"#{p['id']} {p['nome_assistido'].split()[0]} ({p['_dias_aguardando']}d)"
+            for p in aguardando_alerta[:5]
+        )
+        extra_ag = f" e mais {len(aguardando_alerta)-5}" if len(aguardando_alerta) > 5 else ""
+        st.error(f"📂 **{len(aguardando_alerta)} processo(s) aguardando documentos há mais de 15 dias:** "
+                 f"{nomes_ag}{extra_ag}. Verifique e cobre os documentos pendentes.")
     at_sem_res = verificar_notificacoes()
     if at_sem_res:
         nomes_at = ", ".join(f"#{a['id']} {a.get('nome_pessoa','?').split()[0]}" for a in at_sem_res[:5])
