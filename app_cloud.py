@@ -722,6 +722,69 @@ def inject_css():
 
     /* ── Divisores entre linhas ── */
     .row-div { border:none; border-top:1px solid #f1f5f9; margin:4px 0; }
+
+    /* ══════════════════════════════════════════
+       BOTÕES — fonte branca em TODOS os botões
+       da área principal (cadastrar, download, etc.)
+       Abordagem máxima: cobre todas as versões do Streamlit
+    ══════════════════════════════════════════ */
+
+    /* Qualquer botão fora da sidebar */
+    .main .stButton button,
+    .main button,
+    [data-testid="stMain"] button,
+    [data-testid="stMain"] .stButton button {
+        background-color: #1e3a8a !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+    }
+    .main .stButton button:hover,
+    [data-testid="stMain"] button:hover {
+        background-color: #1e40af !important;
+        color: #ffffff !important;
+    }
+
+    /* Download — garante fundo azul e texto branco */
+    .stDownloadButton button,
+    [data-testid="stDownloadButton"] button,
+    .main .stDownloadButton button {
+        background-color: #1e3a8a !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+    }
+    .stDownloadButton button:hover { background-color: #1e40af !important; }
+
+    /* Botões de ação pequenos (✏️ ⏳ 📨 🗑️) — fundo suave */
+    .main .stButton button[title="Editar"],
+    .main .stButton button[title="Excluir"],
+    .main .stButton button[title="Aguardando Docs"],
+    .main .stButton button[title="Protocolar"] {
+        background-color: #e2e8f0 !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+
+    /* Botão Cancelar / Cancelar ação — cinza claro */
+    .main .stButton button[kind="secondary"] {
+        background-color: #f1f5f9 !important;
+        color: #475569 !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+
+    /* Garante que botão da sidebar não seja afetado */
+    section[data-testid="stSidebar"] .stButton button {
+        background: rgba(201,162,39,0.15) !important;
+        color: #c9a227 !important;
+        border: 1px solid #c9a227 !important;
+    }
+    section[data-testid="stSidebar"] .stButton button:hover {
+        background: #c9a227 !important;
+        color: #0f2167 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
