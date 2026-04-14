@@ -1,0 +1,16 @@
+# Protege credenciais — NUNCA enviar ao GitHub
+.streamlit/secrets.toml
+
+# Banco local (não vai para a nuvem)
+*.db
+naj_iuna.db
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
