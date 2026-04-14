@@ -1329,7 +1329,7 @@ def modulo_processos(modo: str):
         if st.button("➕ Cadastrar Novo Processo", type="primary", key=f"btn_novo_{modo}"):
             st.session_state[form_key] = {
                 "id": None, "data_entrada": hoje_iso(), "numero_pasta": "",
-                "nome_assistido": "", "descricao": "", "telefone":"", "assessor": "",
+                "nome_assistido": "", "descricao": "", "telefone":"","assessor": "",
                 "prioridade": "Média", "status": "Em Andamento",
             }
 
