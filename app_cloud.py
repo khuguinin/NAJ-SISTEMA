@@ -445,6 +445,50 @@ def _get_dados_relatorio(tipo, assessor_filtro, data_ini=None, data_fim=None):
 # ══════════════════════════════════════════════════════════════════════════════
 #  CSS
 # ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+#  NOTIFICAÇÕES — Atendimentos sem resolução após 24h
+# ══════════════════════════════════════════════════════════════════════════════
+def verificar_notificacoes() -> list[dict]:
+    """Retorna atendimentos com resolução vazia criados há mais de 24h."""
+    todos = listar_atendimentos()
+    limite = datetime.datetime.now() - datetime.timedelta(hours=24)
+    pendentes = []
+    for a in todos:
+        if a.get("resolucao","").strip():
+            continue  # já tem resolução
+        # Tenta parsear data do atendimento + hora de criação
+        try:
+            criado_em = a.get("criado_em","")
+            if criado_em:
+                dt = datetime.datetime.strptime(criado_em, "%d/%m/%Y %H:%M")
+            else:
+                # Fallback: usa a data do atendimento como meia-noite
+                dt = datetime.datetime.fromisoformat(a["data_atendimento"])
+            if dt <= limite:
+                pendentes.append(a)
+        except Exception:
+            pass
+    return pendentes
+
+def exibir_notificacoes():
+    """Exibe banner de notificação se houver atendimentos pendentes."""
+    perfil = st.session_state.get("perfil","")
+    if perfil != "assessor":
+        return
+    pendentes = verificar_notificacoes()
+    if not pendentes:
+        return
+    nomes = ", ".join(
+        f"#{a['id']} {a.get('nome_pessoa','?').split()[0]}"
+        for a in pendentes[:5]
+    )
+    extra = f" e mais {len(pendentes)-5}" if len(pendentes) > 5 else ""
+    st.warning(
+        f"🔔 **{len(pendentes)} atendimento(s) sem resolução há mais de 24h:** "
+        f"{nomes}{extra}. Acesse o módulo de Atendimentos e registre a solução.",
+        icon="⚠️"
+    )
+
 def inject_css():
     st.markdown("""
     <style>
@@ -540,27 +584,77 @@ def inject_css():
         border-color: #e2e8f0 !important;
     }
 
-    /* Inputs com fundo branco */
-    .stTextInput input, .stTextArea textarea, .stSelectbox > div > div,
-    .stDateInput input {
-        background: white !important;
+    /* ── Inputs, selects, textareas — força light mode no Cloud ── */
+    input, textarea, select,
+    .stTextInput input,
+    .stTextArea textarea,
+    .stSelectbox > div > div,
+    .stSelectbox [data-baseweb="select"] > div,
+    .stDateInput input,
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] textarea,
+    [data-baseweb="select"] div {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
         color: #1e293b !important;
         border-color: #cbd5e1 !important;
     }
 
-    /* Labels de inputs */
+    /* Dropdown aberto */
+    [data-baseweb="popover"] li,
+    [data-baseweb="menu"] li,
+    [role="option"],
+    [role="listbox"] { background: white !important; color: #1e293b !important; }
+    [role="option"]:hover { background: #f0f4f8 !important; }
+
+    /* Labels de todos os inputs */
     .stTextInput label, .stTextArea label, .stSelectbox label,
-    .stDateInput label, .stRadio label { color: #374151 !important; }
+    .stDateInput label, .stRadio label, .stCheckbox label,
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] { color: #374151 !important; }
+
+    /* Botões secundários (não-primary) */
+    .stButton > button:not([kind="primary"]) {
+        background: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+    }
+    .stButton > button:not([kind="primary"]):hover {
+        background: #f0f4f8 !important;
+        border-color: #1e3a8a !important;
+        color: #1e3a8a !important;
+    }
 
     /* Expanders */
-    details, summary { background: white !important; color: #1e293b !important; }
-    [data-testid="stExpander"] { background: white !important; border-color: #e2e8f0 !important; }
+    details, summary,
+    [data-testid="stExpander"],
+    [data-testid="stExpander"] > div {
+        background: white !important;
+        color: #1e293b !important;
+        border-color: #e2e8f0 !important;
+    }
+    summary:hover { background: #f8fafc !important; }
 
     /* Captions */
     .stCaption, [data-testid="stCaptionContainer"] p { color: #64748b !important; }
 
-    /* Info / success / warning */
-    [data-testid="stAlert"] p { color: inherit !important; }
+    /* Info / success / warning / error alerts */
+    [data-testid="stAlert"] { color: inherit !important; }
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] span { color: inherit !important; }
+
+    /* Número dos inputs de data */
+    input[type="number"] { background: white !important; color: #1e293b !important; }
+
+    /* Download button */
+    .stDownloadButton > button {
+        background: #1e3a8a !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+    .stDownloadButton > button:hover { background: #1e40af !important; }
 
     /* ── Header ── */
     .naj-header {
@@ -867,12 +961,19 @@ def render_sidebar() -> str:
                 "📄  Relatórios PDF",
             ], label_visibility="collapsed")
         else:
-            menu = "🧑‍💼  Atendimentos"
+            st.markdown('<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;'
+                        'letter-spacing:1.2px;padding:0 4px;margin-bottom:4px;">Módulos</div>',
+                        unsafe_allow_html=True)
+            menu = st.radio("nav", [
+                "📌  Processos Ativos",
+                "📋  Demandas Avulsas",
+                "🧑‍💼  Atendimentos",
+            ], label_visibility="collapsed")
             st.markdown("""
             <div style="background:rgba(201,162,39,.1);border:1px solid rgba(201,162,39,.3);
-                        border-radius:8px;padding:10px 12px;font-size:12px;color:rgba(255,255,255,.65);">
+                        border-radius:8px;padding:8px 12px;font-size:11px;color:rgba(255,255,255,.55);margin-top:6px;">
                 <b style="color:#c9a227;">Perfil: Portaria</b><br>
-                Acesso restrito ao módulo de Atendimentos.
+                Pode cadastrar processos, demandas e atendimentos.
             </div>""", unsafe_allow_html=True)
 
         st.markdown('<hr style="border-color:rgba(255,255,255,.1);margin:8px 0;">', unsafe_allow_html=True)
@@ -984,18 +1085,20 @@ def card_processo(p: dict, form_key: str, acoes_status: bool = False):
         st.markdown(dias_html(dias), unsafe_allow_html=True)
 
     with c_acoes:
+        _perfil = st.session_state.get("perfil","assessor")
         b1, b2, b3, b4 = st.columns(4)
         with b1:
-            if st.button("✏️", key=f"ed_{form_key}_{p['id']}", help="Editar"):
-                st.session_state[form_key] = {
-                    "id": p["id"], "data_entrada": p.get("data_entrada", hoje_iso()),
-                    "numero_pasta": p.get("numero_pasta",""),
-                    "nome_assistido": p["nome_assistido"], "descricao": p.get("descricao",""),
-                    "assessor": p.get("assessor",""), "prioridade": p.get("prioridade","Média"),
-                    "status": p.get("status","Em Andamento"),
-                }
-                st.rerun()
-        if acoes_status:
+            if _perfil == "assessor":
+                if st.button("✏️", key=f"ed_{form_key}_{p['id']}", help="Editar"):
+                    st.session_state[form_key] = {
+                        "id": p["id"], "data_entrada": p.get("data_entrada", hoje_iso()),
+                        "numero_pasta": p.get("numero_pasta",""),
+                        "nome_assistido": p["nome_assistido"], "descricao": p.get("descricao",""),
+                        "assessor": p.get("assessor",""), "prioridade": p.get("prioridade","Média"),
+                        "status": p.get("status","Em Andamento"),
+                    }
+                    st.rerun()
+        if acoes_status and _perfil == "assessor":
             with b2:
                 if st.button("⏳", key=f"ag_{form_key}_{p['id']}", help="Aguardando Docs"):
                     alterar_status_processo(p["id"], "Aguardando Documentos", usuario); st.rerun()
@@ -1003,8 +1106,9 @@ def card_processo(p: dict, form_key: str, acoes_status: bool = False):
                 if st.button("📨", key=f"pr_{form_key}_{p['id']}", help="Protocolar"):
                     alterar_status_processo(p["id"], "Protocolado", usuario); st.rerun()
         with b4:
-            if st.button("🗑️", key=f"dl_{form_key}_{p['id']}", help="Excluir"):
-                st.session_state[f"_dp_{p['id']}"] = True; st.rerun()
+            if _perfil == "assessor":
+                if st.button("🗑️", key=f"dl_{form_key}_{p['id']}", help="Excluir"):
+                    st.session_state[f"_dp_{p['id']}"] = True; st.rerun()
 
     if st.session_state.get(f"_dp_{p['id']}"):
         st.warning(f"⚠️ Confirma exclusão do processo **#{p['id']} – {p['nome_assistido']}**?")
@@ -1065,6 +1169,14 @@ def modulo_dashboard():
     if criticos:
         st.error(f"⚠️ **{len(criticos)} processo(s) com mais de 30 dias em aberto** — atenção imediata: "
                  + ", ".join(f"#{p['id']} {p['nome_assistido'].split()[0]}" for p in criticos[:6]))
+
+    # Notificações de atendimentos sem resolução
+    at_sem_res = verificar_notificacoes()
+    if at_sem_res:
+        nomes_at = ", ".join(f"#{a['id']} {a.get('nome_pessoa','?').split()[0]}" for a in at_sem_res[:5])
+        extra_at = f" e mais {len(at_sem_res)-5}" if len(at_sem_res) > 5 else ""
+        st.warning(f"🔔 **{len(at_sem_res)} atendimento(s) sem resolução há mais de 24h:** "
+                   f"{nomes_at}{extra_at}. Registre a resolução no módulo de Atendimentos.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     col_l, col_r = st.columns([1.6, 1])
@@ -1175,6 +1287,7 @@ def modulo_demandas():
     if st.button("➕ Nova Demanda Avulsa", type="primary"):
         st.session_state["fd"] = {"id":None,"data_solicitacao":hoje_iso(),"numero_pasta":"",
                                   "nome_assistido":"","demanda":"","assessor":"","status":"Pendente"}
+    _perfil_dem = st.session_state.get("perfil","assessor")
 
     if "fd" in st.session_state:
         fd = st.session_state["fd"]
@@ -1249,14 +1362,16 @@ def modulo_demandas():
             with c5:
                 b1,b2 = st.columns(2)
                 with b1:
-                    if st.button("✏️", key=f"ed_d_{d['id']}", help="Editar"):
-                        st.session_state["fd"] = {"id":d["id"],"data_solicitacao":d.get("data_solicitacao",hoje_iso()),
-                            "numero_pasta":d.get("numero_pasta",""),"nome_assistido":d["nome_assistido"],
-                            "demanda":d.get("demanda",""),"assessor":d.get("assessor",""),"status":d.get("status","Pendente")}
-                        st.rerun()
+                    if _perfil_dem == "assessor":
+                        if st.button("✏️", key=f"ed_d_{d['id']}", help="Editar"):
+                            st.session_state["fd"] = {"id":d["id"],"data_solicitacao":d.get("data_solicitacao",hoje_iso()),
+                                "numero_pasta":d.get("numero_pasta",""),"nome_assistido":d["nome_assistido"],
+                                "demanda":d.get("demanda",""),"assessor":d.get("assessor",""),"status":d.get("status","Pendente")}
+                            st.rerun()
                 with b2:
-                    if st.button("🗑️", key=f"dl_d_{d['id']}", help="Excluir"):
-                        st.session_state[f"_dd_{d['id']}"] = True; st.rerun()
+                    if _perfil_dem == "assessor":
+                        if st.button("🗑️", key=f"dl_d_{d['id']}", help="Excluir"):
+                            st.session_state[f"_dd_{d['id']}"] = True; st.rerun()
 
             if st.session_state.get(f"_dd_{d['id']}"):
                 st.warning(f"⚠️ Confirma exclusão da demanda **#{d['id']}**?")
@@ -1526,6 +1641,8 @@ def main():
 
     menu = render_sidebar()
     render_header()
+
+    exibir_notificacoes()
 
     if   "Dashboard"    in menu: modulo_dashboard()
     elif "Ativos"       in menu: modulo_processos("ativos")
